@@ -1,0 +1,2 @@
+# azuretemplates
+MyAzureARMTemplates
