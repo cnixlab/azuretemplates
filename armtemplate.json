@@ -1,0 +1,184 @@
+{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+  "contentVersion": "1.0.0.0",
+
+  "resources": [
+    {
+      "apiVersion": "[variables('api-version')]",
+      "type": "Microsoft.Network/localNetworkGateways",
+      "name": "[variables('LocalGatewayName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "localNetworkAddressSpace": {
+          "addressPrefixes": [
+            "[parameters('LocalNetworkAddressPrefix')]"
+          ]
+        },
+        "gatewayIpAddress": "[parameters('localGatewayIpAddress')]"
+      }
+    },
+    {
+      "apiVersion": "[variables('api-version')]",
+      "name": "[variables('VPNConnectionName')]",
+      "type": "Microsoft.Network/connections",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/virtualNetworkGateways/', variables('AzureGatewayName'))]",
+        "[concat('Microsoft.Network/localNetworkGateways/', variables('LocalGatewayName'))]"
+      ],
+      "properties": {
+        "virtualNetworkGateway1": {
+          "id": "[resourceId('Microsoft.Network/virtualNetworkGateways', variables('AzureGatewayName'))]"
+        },
+        "localNetworkGateway2": {
+          "id": "[resourceId('Microsoft.Network/localNetworkGateways', variables('LocalGatewayName'))]"
+        },
+        "connectionType": "IPsec",
+        "routingWeight": 10,
+        "sharedKey": "[parameters('sharedKey')]"
+      }
+    },
+    {
+      "apiVersion": "[variables('api-version')]",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('AzureVNetName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('azureVNetAddressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[parameters('AzureVNetSubnetName')]",
+            "properties": {
+              "addressPrefix": "[parameters('AzureVNetSubnetPrefix')]"
+            }
+          },
+          {
+            "name": "GatewaySubnet",
+            "properties": {
+              "addressPrefix": "[parameters('AzureVNetGatewaySubnetPrefix')]"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "[variables('api-version')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[variables('AzureGatewayPipName')]",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIPAllocationMethod": "Dynamic"
+      }
+    },
+    {
+      "apiVersion": "[variables('api-version')]",
+      "type": "Microsoft.Network/virtualNetworkGateways",
+      "name": "[variables('AzureGatewayName')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', variables('AzureGatewayPipName'))]",
+        "[concat('Microsoft.Network/virtualNetworks/', variables('AzureVNetName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "subnet": {
+                "id": "[variables('gatewaySubnetRef')]"
+              },
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses',variables('AzureGatewayPipName'))]"
+              }
+            },
+            "name": "vnetGatewayConfig"
+          }
+        ],
+        "gatewayType": "Vpn",
+        "vpnType": "[parameters('SelectVpnType')]",
+        "enableBgp": "false"
+      }
+    }
+  ],
+
+  "parameters": {
+
+    "CompanyNameAcronym": {
+      "type": "string",
+      "metadata": {
+        "description": "Company Name will be used as prefix for every object that will be deployed using this template. For example if company name is called ProServeIt, prefix can be PSIT."
+      }
+    },
+
+    "SelectVpnType": {
+      "type": "String",
+      "metadata": {
+        "description": "Select VPN type. VPN Type has to be supported by Local Gateway Device. Please check Azure Site To Site VPN Supported Gateways List."
+      },
+      "allowedValues": [
+        "RouteBased",
+        "PolicyBased"
+      ]
+    },
+    "AzureVNetAddressPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "CIDR block representing the address space of the Azure VNet. This is the main address space of Azure Virtual Network. It will be used to create new subnets."
+      }
+    },
+    "AzureVNetSubnetName": {
+      "type": "string",
+      "metadata": {
+        "description": "Specify name of the firts subnet. Subnets in Azure Virtual Network are not only identified by IP Address but human friendly name as well."
+      }
+    },
+    "AzureVNetSubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "CIDR block for Virtual Machines Subnet. It is a subset of Azure Virtual Network Address Prefix. It has to be contained within VNet Address Prefix\Space."
+      }
+    },
+    "AzureVNetGatewaySubnetPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "CIDR block for gateway subnet. Gateway subnet will be used by Azure Virtual Network Gateway Only. Size of Gateway Subnet strictly depends on how many different physical locations will be connecting to single Azure Network Gateway."
+      }
+    },
+    "LocalGatewayIpAddress": {
+      "type": "string",
+      "metadata": {
+        "description": "Public IP of your on premise VPN Device. It can be a Firewall or Router."
+      }
+    },
+    "LocalNetworkAddressPrefix": {
+      "type": "string",
+      "metadata": {
+        "description": "CIDR block representing the address space of your on-premise network's Subnet."
+      }
+    },
+
+    "SharedKey": {
+      "type": "string",
+      "metadata": {
+        "description": "Shared key (PSK) for IPSec tunnel. Password key that will be used by both, Azure Virtual Gateway and Local Network Gateway\Firwall to establish VPN Connection."
+      }
+    }
+  },
+  "variables": {
+
+    "LocalGatewayName": "[concat(parameters('CompanyNameAcronym'), '-LNG', '-VPN')]",
+    "AzureGatewayName": "[concat(parameters('CompanyNameAcronym'), '-VNG', '-VPN')]",
+    "AzureGatewayPipName": "[concat(parameters('CompanyNameAcronym'),'-VNG','-PIP')]",
+    "VPNConnectionName": "[concat(parameters('CompanyNameAcronym'), '-VPN','-CONNECTION')]",
+    "AzureVNetName": "[concat(parameters('CompanyNameAcronym'), '-CORE','-VNET')]",
+
+    "vnetID": "[resourceId('Microsoft.Network/virtualNetworks', variables('AzureVNetName'))]",
+    "gatewaySubnetRef": "[concat(variables('vnetID'),'/subnets/','GatewaySubnet')]",
+    "subnetRef": "[concat(variables('vnetID'),'/subnets/',parameters('AzureVNetSubnetName'))]",
+    "api-version": "2015-06-15"
+  }
+}
